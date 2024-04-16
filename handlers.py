@@ -21,8 +21,6 @@ print(admin_id)
 @router.message(Command("start"))
 async def start_handler(msg: types.Message):
     user_id = msg.from_user.id
-    print(user_id)
-    print(admin_id)
     if int(user_id) == int(admin_id):
         await msg.answer(text.hello_polya)
     elif not db.check_user(user_id = user_id):
@@ -36,21 +34,20 @@ async def start_handler(msg: types.Message):
 
 @router.callback_query(F.data == "new_question")
 async def new_question_handler(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
     try:
-        print(callback.message.chat.id)
-        print(callback.message.message_id)
-        if db.check_quest_wait(user_id = callback.from_user.id)[0] == 0:
+        if db.check_quest_wait(user_id = user_id)[0] == 0:
             if callback.message.text == text.hello_message or callback.message == text.send_question:
                 await callback.message.delete()
                 await callback.message.answer(text.ask_question)
                 await state.set_state(states.QuestState.question_wait)
             else:
-                print(callback.message.chat.id)
                 await bot.edit_message_reply_markup(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
                 await callback.message.answer(text.ask_question)
                 await state.set_state(states.QuestState.question_wait)
         else:
             await callback.message.answer(text.send_question)
+            await state.set_state(states.QuestState.question_wait)
     except Exception as er:logging.error(er)
 
 
@@ -60,14 +57,16 @@ async def ask_handler(msg: types.Message):
     user_id = msg.from_user.id
     answer_button = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="Ответить", callback_data=f"answer:{user_id}")],
     ])
-    if not db.check_user(user_id=user_id):
-        db.update_quest_await (user_id=user_id, question_wait=1)
-        await msg.answer(text.send_question, reply_markup=answer_button)
+    if db.check_quest_wait(user_id = user_id)[0] == 0:
+        if not db.check_user(user_id=user_id):
+            db.update_quest_await (user_id=user_id, question_wait=1)
+            await msg.answer(text.send_question, reply_markup=answer_button)
+        else:
+            db.update_quest_await(user_id=user_id, question_wait=1)
+            await bot.send_message(admin_id, f"Внимание вопрос: {question}", reply_markup=answer_button)
+            await msg.answer(text.send_question)
     else:
-        db.update_quest_await(user_id=user_id, question_wait=1)
-        await bot.send_message(admin_id, f"Внимание вопрос: {question}", reply_markup=answer_button)
-        await msg.answer(text.send_question)
-        
+        await msg.answer(text.send_question)    
 
 @router.callback_query(lambda c: c.data.startswith("answer:"))
 async def callback_answer_button(callback: types.CallbackQuery, state: FSMContext):
